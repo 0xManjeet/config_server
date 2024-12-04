@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Storage UI</title>
+    <style>
+        body { padding: 20px; font-family: sans-serif; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input[type="text"], textarea { width: 100%; padding: 8px; }
+        textarea { height: 150px; }
+        .button-group { margin-top: 10px; }
+        .view-button { margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <form method="POST" action="/" id="dataForm">
+        <div class="form-group">
+            <label for="key">Key:</label>
+            <input type="text" id="key" name="key" value="{{.Key}}" readonly>
+        </div>
+        <div class="form-group">
+            <label for="value">Value (JSON):</label>
+            <textarea id="value" name="value">{{.Value}}</textarea>
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" value="{{.Password}}">
+        </div>
+        <div class="button-group">
+            <button type="submit">Submit</button>
+            <button type="button" class="view-button" onclick="window.open('/' + document.getElementById('key').value, '_blank')">View JSON</button>
+        </div>
+    </form>
+    <script>
+    document.getElementById('dataForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const key = document.getElementById('key').value;
+        const value = document.getElementById('value').value;
+        const password = document.getElementById('password').value;
+        
+        try {
+            const response = await fetch('/' + key, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': password
+                },
+                body: value
+            });
+            
+            if (!response.ok) {
+                throw new Error('Request failed: ' + response.statusText);
+            }
+            
+            alert('Data saved successfully!');
+        } catch (err) {
+            alert('Error: ' + err.message);
+        }
+    };
+    </script>
+</body>
+</html> 
