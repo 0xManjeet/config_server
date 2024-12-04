@@ -2,8 +2,9 @@ package handlers
 
 import (
 	"html/template"
-	"net/http"
 	"path/filepath"
+
+	"github.com/valyala/fasthttp"
 )
 
 type UIHandler struct {
@@ -23,9 +24,11 @@ func NewUIHandler(storage Storage, templateDir string) (*UIHandler, error) {
 	}, nil
 }
 
-func (h *UIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	key := r.URL.Query().Get("key")
-	pass := r.URL.Query().Get("pass")
+func (h *UIHandler) HandleFastHTTP(ctx *fasthttp.RequestCtx) {
+	ctx.SetContentType("text/html; charset=utf-8")
+
+	key := string(ctx.QueryArgs().Peek("key"))
+	pass := string(ctx.QueryArgs().Peek("pass"))
 
 	var value string
 	if key != "" {
@@ -44,5 +47,5 @@ func (h *UIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Password: pass,
 	}
 
-	h.template.Execute(w, data)
-} 
+	h.template.Execute(ctx, data)
+}

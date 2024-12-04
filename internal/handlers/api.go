@@ -2,13 +2,17 @@ package handlers
 
 import (
 	"encoding/json"
-	"net/http"
 	"strings"
+	"sync"
+
+	"github.com/valyala/fasthttp"
 )
 
 type APIHandler struct {
-	storage  Storage
-	password string
+	storage            Storage
+	password           string
+	corsAllowedOrigins string
+	pool               sync.Pool
 }
 
 type Storage interface {
@@ -16,97 +20,101 @@ type Storage interface {
 	Set(key string, value json.RawMessage) error
 }
 
-func NewAPIHandler(storage Storage, password string) *APIHandler {
+func NewAPIHandler(storage Storage, password string, corsAllowedOrigins string) *APIHandler {
 	return &APIHandler{
-		storage:  storage,
-		password: password,
+		storage:            storage,
+		password:           password,
+		corsAllowedOrigins: corsAllowedOrigins,
+		pool: sync.Pool{
+			New: func() interface{} {
+				b := make([]byte, 1024*1024)
+				return &b
+			},
+		},
 	}
 }
 
-func (h *APIHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers
-	origin := r.Header.Get("Origin")
-	if strings.HasSuffix(origin, "noxchat.in") {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+func (h *APIHandler) HandleFastHTTP(ctx *fasthttp.RequestCtx) {
+	origin := string(ctx.Request.Header.Peek("Origin"))
+	if strings.HasSuffix(origin, h.corsAllowedOrigins) {
+		ctx.Response.Header.Set("Access-Control-Allow-Origin", origin)
+		ctx.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		ctx.Response.Header.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 	}
 
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusOK)
+	if string(ctx.Method()) == "OPTIONS" {
+		ctx.SetStatusCode(fasthttp.StatusOK)
 		return
 	}
 
-	key := strings.TrimPrefix(r.URL.Path, "/")
+	key := string(ctx.Path()[1:])
 	if key == "" {
-		http.Error(w, "Key required", http.StatusBadRequest)
+		ctx.Error("Key required", fasthttp.StatusBadRequest)
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
-		h.handleGet(w, key)
-	case http.MethodPost:
-		h.handlePost(w, r, key)
+	switch string(ctx.Method()) {
+	case "GET":
+		h.handleFastGet(ctx, key)
+	case "POST":
+		h.handleFastPost(ctx, key)
 	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		ctx.Error("Method not allowed", fasthttp.StatusMethodNotAllowed)
 	}
 }
 
-func (h *APIHandler) handleGet(w http.ResponseWriter, key string) {
+func (h *APIHandler) handleFastGet(ctx *fasthttp.RequestCtx, key string) {
 	data, err := h.storage.Get(key)
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
 		return
 	}
 	if data == nil {
-		http.Error(w, "Key not found", http.StatusNotFound)
+		ctx.Error("Key not found", fasthttp.StatusNotFound)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	ctx.SetContentType("application/json")
+	ctx.Write(data)
 }
 
-func (h *APIHandler) handlePost(w http.ResponseWriter, r *http.Request, key string) {
-	// Validate key format (example: alphanumeric + limited special chars only)
+func (h *APIHandler) handleFastPost(ctx *fasthttp.RequestCtx, key string) {
 	if !isValidKey(key) {
-		http.Error(w, "Invalid key format", http.StatusBadRequest)
+		ctx.Error("Invalid key format", fasthttp.StatusBadRequest)
 		return
 	}
 
-	if r.Header.Get("Authorization") != h.password {
-		http.Error(w, "Unauthorized", http.StatusForbidden)
+	if string(ctx.Request.Header.Peek("Authorization")) != h.password {
+		ctx.Error("Unauthorized", fasthttp.StatusForbidden)
 		return
 	}
 
-	// Set a reasonable size limit (e.g., 1MB)
-	r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+	bufferPtr := h.pool.Get().(*[]byte)
+	defer h.pool.Put(bufferPtr)
+	buffer := *bufferPtr
 
-	var jsonData json.RawMessage
-	if err := json.NewDecoder(r.Body).Decode(&jsonData); err != nil {
-		if err.Error() == "http: request body too large" {
-			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-			return
-		}
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+	if len(ctx.PostBody()) > len(buffer) {
+		ctx.Error("Request body too large", fasthttp.StatusRequestEntityTooLarge)
 		return
 	}
 
-	if err := h.storage.Set(key, jsonData); err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	if !json.Valid(ctx.PostBody()) {
+		ctx.Error("Invalid JSON", fasthttp.StatusBadRequest)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	if err := h.storage.Set(key, json.RawMessage(ctx.PostBody())); err != nil {
+		ctx.Error("Internal server error", fasthttp.StatusInternalServerError)
+		return
+	}
+
+	ctx.SetStatusCode(fasthttp.StatusOK)
 }
 
-// Add this helper function
 func isValidKey(key string) bool {
-	if len(key) > 256 { // Set a reasonable maximum key length
+	if len(key) > 256 {
 		return false
 	}
-	// Only allow alphanumeric characters and certain special characters
 	for _, r := range key {
 		if !isAllowedKeyChar(r) {
 			return false

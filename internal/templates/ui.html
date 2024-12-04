@@ -1,62 +1,202 @@
 <!DOCTYPE html>
-<html>
+<html class="dark">
+
 <head>
     <title>Storage UI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))"
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        body { padding: 20px; font-family: sans-serif; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; }
-        input[type="text"], textarea { width: 100%; padding: 8px; }
-        textarea { height: 150px; }
-        .button-group { margin-top: 10px; }
-        .view-button { margin-left: 10px; }
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 0 0% 3.9%;
+            --primary: 0 0% 9%;
+            --primary-foreground: 0 0% 98%;
+            --border: 0 0% 89.8%;
+            --input: 0 0% 89.8%;
+        }
+
+        .dark {
+            --background: 0 0% 3.9%;
+            --foreground: 0 0% 98%;
+            --primary: 0 0% 98%;
+            --primary-foreground: 0 0% 9%;
+            --border: 0 0% 14.9%;
+            --input: 0 0% 14.9%;
+        }
     </style>
 </head>
-<body>
-    <form method="POST" action="/" id="dataForm">
-        <div class="form-group">
-            <label for="key">Key:</label>
-            <input type="text" id="key" name="key" value="{{.Key}}" readonly>
-        </div>
-        <div class="form-group">
-            <label for="value">Value (JSON):</label>
-            <textarea id="value" name="value">{{.Value}}</textarea>
-        </div>
-        <div class="form-group">
-            <label for="password">Password:</label>
-            <input type="password" id="password" name="password" value="{{.Password}}">
-        </div>
-        <div class="button-group">
-            <button type="submit">Submit</button>
-            <button type="button" class="view-button" onclick="window.open('/' + document.getElementById('key').value, '_blank')">View JSON</button>
-        </div>
-    </form>
+
+<body class="bg-background text-foreground min-h-screen">
+    <div class="max-w-2xl mx-auto py-12 px-4">
+        <!-- <h1 class="text-3xl font-bold text-gray-100 mb-8">Storage UI</h1> -->
+
+        <form method="POST" action="/" id="dataForm"
+            class="bg-background border border-border shadow-md rounded-lg p-6">
+            <div class="space-y-6">
+                <div>
+                    <label for="key" class="block text-lg font-medium text-yellow-400">/{{.Key}}</label>
+                </div>
+
+                <div>
+                    <label for="value" class="block text-sm font-medium text-gray-200">Value (JSON)</label>
+                    <textarea id="value" name="value" rows="6"
+                        class="mt-1 p-3 block w-full rounded-md border border-gray-600 bg-gray-700 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{.Value}}</textarea>
+                    <div class="mt-2 flex space-x-2">
+                        <button type="button" onclick="formatJSON()"
+                            class="text-sm text-indigo-400 hover:text-indigo-300">Format JSON</button>
+                        <button type="button" onclick="minifyJSON()"
+                            class="text-sm text-indigo-400 hover:text-indigo-300">Minify JSON</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-200">Password</label>
+                    <input type="password" id="password" name="password" value="{{.Password}}"
+                        class="mt-1 p-3 block w-full rounded-md border border-gray-600 bg-gray-700 text-gray-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div class="flex items-center">
+                    <input type="checkbox" id="remember-password"
+                        class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-600 rounded bg-gray-700">
+                    <label for="remember-password" class="ml-2 block text-sm text-gray-200">Remember password</label>
+                </div>
+
+                <div class="flex space-x-4">
+                    <button type="submit"
+                        class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Save
+                    </button>
+                    <button type="button" onclick="window.open('/' + document.getElementById('key').value, '_blank')"
+                        class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        View JSON
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
     <script>
-    document.getElementById('dataForm').onsubmit = async (e) => {
-        e.preventDefault();
-        const key = document.getElementById('key').value;
-        const value = document.getElementById('value').value;
-        const password = document.getElementById('password').value;
-        
-        try {
-            const response = await fetch('/' + key, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': password
-                },
-                body: value
-            });
-            
-            if (!response.ok) {
-                throw new Error('Request failed: ' + response.statusText);
+        // Add these new functions at the start of your script section
+        function formatJSON() {
+            const textarea = document.getElementById('value');
+            try {
+                const parsed = JSON.parse(textarea.value);
+                textarea.value = JSON.stringify(parsed, null, 2);
+            } catch (err) {
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-md shadow-lg';
+                notification.textContent = 'Invalid JSON: ' + err.message;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 3000);
             }
-            
-            alert('Data saved successfully!');
-        } catch (err) {
-            alert('Error: ' + err.message);
         }
-    };
+
+        function minifyJSON() {
+            const textarea = document.getElementById('value');
+            try {
+                const parsed = JSON.parse(textarea.value);
+                textarea.value = JSON.stringify(parsed);
+            } catch (err) {
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-md shadow-lg';
+                notification.textContent = 'Invalid JSON: ' + err.message;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 3000);
+            }
+        }
+
+        // Format JSON on load if value exists
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedPassword = localStorage.getItem('storagePassword');
+            if (savedPassword) {
+                document.getElementById('password').value = savedPassword;
+                document.getElementById('remember-password').checked = true;
+            }
+
+            // Format JSON if value exists
+            const textarea = document.getElementById('value');
+            if (textarea.value.trim()) {
+                formatJSON();
+            }
+        });
+
+        document.getElementById('dataForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const key = document.getElementById('key').value;
+            const value = document.getElementById('value').value;
+            const password = document.getElementById('password').value;
+            const rememberPassword = document.getElementById('remember-password').checked;
+
+            // Validate JSON before submitting
+            try {
+                JSON.parse(value);
+            } catch (err) {
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-md shadow-lg';
+                notification.textContent = 'Invalid JSON: ' + err.message;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 3000);
+                return;
+            }
+
+            // Minify JSON before sending
+            const minifiedValue = JSON.stringify(JSON.parse(value));
+
+            // Save password to localStorage if checkbox is checked
+            if (rememberPassword) {
+                localStorage.setItem('storagePassword', password);
+            } else {
+                localStorage.removeItem('storagePassword');
+            }
+
+            try {
+                const response = await fetch('/' + key, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': password
+                    },
+                    body: minifiedValue  // Use minified value here
+                });
+
+                if (!response.ok) {
+                    throw new Error('Request failed: ' + response.statusText);
+                }
+
+                // Use a more modern notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-md shadow-lg';
+                notification.textContent = 'Data saved successfully!';
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 3000);
+            } catch (err) {
+                // Show error notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-md shadow-lg';
+                notification.textContent = 'Error: ' + err.message;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 3000);
+            }
+        };
     </script>
 </body>
-</html> 
+
+</html>
