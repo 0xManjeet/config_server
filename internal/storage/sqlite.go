@@ -13,6 +13,10 @@ type Storage struct {
 }
 
 func NewStorage(dbPath string) (*Storage, error) {
+	// If dbPath is not absolute, prefix it with /data/
+	if dbPath[0] != '/' {
+		dbPath = "/data/" + dbPath
+	}
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
